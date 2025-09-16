@@ -1,0 +1,47 @@
+project_name: neuroclassify
+seed: 42
+device: cuda
+num_classes: 4
+img_size: 224
+batch_size: 32
+num_workers: 4
+epochs: 30
+optimizer:
+  name: AdamW
+  lr: 3.0e-4
+  weight_decay: 1.0e-4
+scheduler:
+  name: CosineAnnealingLR
+  T_max: 30
+  eta_min: 1.0e-6
+cv:
+  folds: 5
+  shuffle: true
+  stratified: true
+paths:
+  raw: data/raw
+  processed: data/processed
+  runs: results/runs
+  checkpoints: results/checkpoints
+  logs: results/logs
+  figures: results/figures
+augmentation:
+  hflip: 0.5
+  vflip: 0.0
+  rotate_limit: 10
+  brightness: 0.1
+  contrast: 0.1
+  hue: 0.02
+  sat: 0.1
+  blur: 0.0
+train:
+  early_stopping_patience: 8
+  gradient_clip_norm: 1.0
+  amp: true
+  class_weights: null
+  label_smoothing: 0.0
+  freeze_until_layer: 0  # 0 means unfreeze all
+logging:
+  tensorboard: true
+  wandb: false
+  wandb_project: neuroclassify

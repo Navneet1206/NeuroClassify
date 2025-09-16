@@ -1,21 +1,31 @@
 # NeuroClassify
 
-ResNet50-based, explainable decision-support pipeline to classify brain MRI into four classes: `glioma`, `meningioma`, `pituitary`, and `normal`. The system is designed for clinical decision support (not a diagnostic replacement) with end-to-end steps: preprocessing, augmentation, training with cross-validation, metrics, and Grad-CAM explanations.
+//frontend:  streamlit run app.py
+//backend:   uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
+
+Decision-support system to classify brain MRI into four classes: `glioma`, `meningioma`, `pituitary`, and `normal`.
+
+This repository now provides two complementary paths:
+
+- API-based app (recommended):
+  - FastAPI backend that proxies to an external inference API or OpenRouter.
+  - Streamlit frontend for clinicians to upload an image, view probabilities, and see explainability info.
+
+- Legacy local training (optional):
+  - ResNet50 fine-tuning pipeline with preprocessing, augmentation, CV, metrics, and Captum Grad-CAM.
 
 > Disclaimer: For clinical decision support only — not a diagnostic replacement. Clinical decisions must be made by qualified physicians.
 
-## Key Features
-- Transfer learning with ResNet50 (ImageNet weights), custom head for 4 classes.
-- Optional skull-stripping heuristic for 2D images during preprocessing.
-- Albumentations-based data augmentation (train) and normalization.
-- 5-fold stratified cross-validation, early stopping, cosine LR, AMP (CUDA).
-- Metrics: Accuracy, macro/weighted F1, per-class report, macro AUC, confusion matrix.
-- Explainability: Grad-CAM using Captum (no extra dependencies).
-- Clean structure, configurable via `configs/config.yaml`.
-
-## Repository Structure
+## Project Structure
 ```
 NeuroClassify/
+├─ api_app/
+│  ├─ backend/
+│  │  ├─ main.py              # FastAPI app (/health, /predict). Calls external API or OpenRouter
+│  │  └─ settings.py          # Reads env vars (.env) for configuration
+│  └─ frontend/
+│     └─ app.py               # Streamlit UI: upload image, get probabilities
+│
 ├─ configs/
 │  └─ config.yaml              # Main config (paths, CV, training, logging)
 ├─ data/
@@ -75,6 +85,55 @@ CUDA 11.8 wheels (only if you have matching NVIDIA drivers):
 python -m pip install --index-url https://download.pytorch.org/whl/cu118 torch torchvision torchaudio
 python -m pip install -r requirements.txt
 ```
+
+## API-based App (Backend + Frontend)
+
+### 1) Configure environment (.env)
+Create `api_app/.env` (or copy from `api_app/.env.example`) and fill values. Example for OpenRouter:
+
+```bash
+OPENROUTER_API_KEY=sk-or-...your key...
+OPENROUTER_MODEL=google/gemini-2.5-pro
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1/chat/completions
+OPENROUTER_APP_TITLE=NeuroClassify-API
+OPENROUTER_SITE_URL=http://localhost
+OPENROUTER_MAX_TOKENS=128
+```
+
+Or, to use your own inference API instead of OpenRouter:
+```bash
+MODEL_API_URL=https://your-inference-provider/api/v1/predict
+MODEL_API_KEY=your-provider-api-key
+```
+
+### 2) Run backend (FastAPI)
+Run from the repository root with module path:
+```powershell
+Set-Location d:\git_projects\NeuroClassify
+.\.venv310\Scripts\Activate.ps1
+uvicorn api_app.backend.main:app --host 127.0.0.1 --port 8000 --reload
+```
+Health check and docs:
+```bash
+http://127.0.0.1:8000/health
+http://127.0.0.1:8000/docs
+```
+
+Tip: If you run from inside `api_app/`, use `uvicorn backend.main:app ...` so Python resolves the package correctly.
+
+### 3) Run frontend (Streamlit)
+In a second terminal:
+```powershell
+Set-Location d:\git_projects\NeuroClassify
+.\.venv310\Scripts\Activate.ps1
+streamlit run api_app/frontend/app.py
+```
+In the sidebar set Backend URL = `http://127.0.0.1:8000`, ping `/health`, upload a PNG/JPG, and click Predict.
+
+### OpenRouter notes
+- The backend caps `max_tokens` via `OPENROUTER_MAX_TOKENS` (default 128) to reduce credit usage.
+- If provider returns non-JSON or empty content, the backend now gracefully falls back to simulated probabilities so the UI remains functional.
+- For deterministic production inference, prefer a dedicated vision inference API via `MODEL_API_URL`.
 
 ## Data Preparation
 The training code expects a 2D image dataset organized as:
@@ -161,14 +220,12 @@ Edit `configs/config.yaml` to control:
 - Disclaimer: This tool is for clinical decision support only.
 
 ## Troubleshooting
-- No images found during training:
-  - Ensure `data/processed/` has PNG/JPG images under each class. Run preprocessing first.
-- CUDA errors / slow training:
-  - If you lack CUDA, install CPU-only PyTorch (see Setup) or switch `device: cpu`.
-- Large files in Git push:
-  - Checkpoints are big. Either stop tracking `results/` (default in `.gitignore`) or use Git LFS to version large files.
-- Grad-CAM errors:
-  - Ensure the checkpoint file path exists and the image path points to a processed image.
+- **Backend root shows Not Found**: open `/health` or `/docs`, or use the Streamlit frontend which calls `/predict`.
+- **ModuleNotFoundError: api_app**: run Uvicorn from repo root with `api_app.backend.main:app`, or from inside `api_app/` with `backend.main:app`.
+- **OpenRouter 400/402/500**: lower `OPENROUTER_MAX_TOKENS` (64–128), try a cheaper model (e.g., `google/gemini-flash-1.5`), or remove `OPENROUTER_API_KEY` to use simulated mode.
+- **No images found during training**: ensure `data/processed/` has images; run preprocessing.
+- **CUDA not available**: install CPU-only PyTorch or set `device: cpu`.
+- **Large files in Git push**: rely on `.gitignore` or use Git LFS for model artifacts.
 
 ## Git & Large Files
 `.gitignore` excludes `data/` and `results/` by default. If you need to version model files, use Git LFS:

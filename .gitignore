@@ -205,3 +205,46 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# -----------------------------
+# Project-specific ignores
+# -----------------------------
+# Data directories (keep repo lean; datasets can be huge)
+data/raw/
+data/processed/
+
+# Training outputs
+results/checkpoints/
+results/logs/
+results/runs/
+results/figures/
+results/**/*.json
+
+# Model and artifact files
+*.pt
+*.pth
+*.ckpt
+*.bin
+*.onnx
+*.tflite
+*.npz
+*.npy
+*.pkl
+*.joblib
+*.tfevents*
+
+# Caches
+.cache/
+.torch/
+.huggingface/
+
+# Virtual environments
+.venv/
+.venv310/
+venv/
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+*.swp
+*.swo

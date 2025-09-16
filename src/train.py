@@ -6,7 +6,6 @@ from sklearn.model_selection import StratifiedKFold
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from torch.cuda import amp
 from torchvision.ops import misc as misc_ops
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
@@ -51,7 +50,8 @@ def train_one_epoch(model, loader, criterion, optimizer, scaler, device, clip_no
         images = images.to(device)
         targets = targets.to(device)
         optimizer.zero_grad(set_to_none=True)
-        with amp.autocast(enabled=scaler is not None):
+        # Use new autocast API
+        with torch.amp.autocast(device_type=("cuda" if device.startswith("cuda") else "cpu"), enabled=scaler is not None):
             logits = model(images)
             loss = criterion(logits, targets)
         if scaler is not None:
@@ -144,14 +144,27 @@ def run_training(config_path: str = "configs/config.yaml"):
         print(f"===== Fold {fold+1}/{cfg['cv']['folds']} =====")
         train_ds = BrainMRIDataset(X[train_idx].tolist(), y[train_idx].tolist(), img_size=cfg["img_size"], augment=True)
         val_ds = BrainMRIDataset(X[val_idx].tolist(), y[val_idx].tolist(), img_size=cfg["img_size"], augment=False)
-        train_loader = DataLoader(train_ds, batch_size=cfg["batch_size"], shuffle=True, num_workers=cfg["num_workers"], pin_memory=True)
-        val_loader = DataLoader(val_ds, batch_size=cfg["batch_size"], shuffle=False, num_workers=cfg["num_workers"], pin_memory=True)
+        pin_mem = device.startswith("cuda")
+        train_loader = DataLoader(
+            train_ds,
+            batch_size=cfg["batch_size"],
+            shuffle=True,
+            num_workers=cfg["num_workers"],
+            pin_memory=pin_mem,
+        )
+        val_loader = DataLoader(
+            val_ds,
+            batch_size=cfg["batch_size"],
+            shuffle=False,
+            num_workers=cfg["num_workers"],
+            pin_memory=pin_mem,
+        )
 
         model = ResNet50Classifier(num_classes=cfg["num_classes"], freeze_until_layer=cfg["train"]["freeze_until_layer"]).to(device)
         criterion = nn.CrossEntropyLoss(label_smoothing=cfg["train"].get("label_smoothing", 0.0))
         optimizer = get_optimizer(model, cfg)
         scheduler = get_scheduler(optimizer, cfg)
-        scaler = amp.GradScaler(enabled=cfg["train"]["amp"]) if device.startswith("cuda") else None
+        scaler = torch.cuda.amp.GradScaler(enabled=(cfg["train"].get("amp", True) and device.startswith("cuda"))) if torch.cuda.is_available() else None
 
         best_metric = -np.inf
         patience = cfg["train"]["early_stopping_patience"]
